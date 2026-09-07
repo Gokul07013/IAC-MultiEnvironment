@@ -1,5 +1,5 @@
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source  = "terraform-aws-modules/vpc/aws"
   version = "6.6.1"
 
   name = "${var.name}-${var.environment}-vpc"
@@ -12,5 +12,5 @@ module "vpc" {
   enable_nat_gateway = var.enable_nat_gateway
 
   tags = var.tags
-    
+
 }
