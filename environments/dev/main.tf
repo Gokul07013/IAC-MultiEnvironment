@@ -8,9 +8,8 @@ module "vpc" {
   public_subnets  = ["20.0.1.0/24", "20.0.2.0/24", "20.0.3.0/24"]
   private_subnets = ["20.0.101.0/24", "20.0.102.0/24", "20.0.103.0/24"]
 
-  # NAT gateway lets tasks in private subnets pull the container image
-  # and reach the internet for outbound calls.
   enable_nat_gateway = true
+  single_nat_gateway = true
 
   tags = local.tags
 }
@@ -22,7 +21,7 @@ module "alb" {
   environment = "dev"
 
   vpc_id  = module.vpc.vpc_id
-  subnets = module.vpc.public_subnets # internet-facing ALB lives in public subnets
+  subnets = module.vpc.public_subnets
 
   listener_port     = 80
   target_port       = 80
@@ -33,13 +32,13 @@ module "alb" {
 
 module "ecs" {
   source = "../../modules/ecs"
-
+  
   name        = "mt"
   environment = "dev"
 
   service_name    = "demo"
   container_name  = "app"
-  container_image = "public.ecr.aws/aws-containers/ecsdemo-frontend:776fd50"
+  container_image = "nginx:latest"
   container_port  = 80
   cpu             = 256
   memory          = 512

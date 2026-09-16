@@ -35,7 +35,7 @@ module "ecs" {
           essential = true
           image     = var.container_image
 
-          port_mappings = [
+          portMappings = [
             {
               name          = var.container_name
               containerPort = var.container_port
@@ -43,7 +43,7 @@ module "ecs" {
             }
           ]
 
-          readonly_root_filesystem  = false
+          readonlyRootFilesystem  = false
           enable_cloudwatch_logging = true
 
           # Container-level health check: ECS runs this command inside the
@@ -59,9 +59,9 @@ module "ecs" {
       }
 
       # Register this service's tasks into the ALB target group so the load
-      # balancer can route traffic to them. Only wired when a target group
-      # ARN is provided.
-      load_balancer = var.target_group_arn == null ? {} : {
+      # balancer can route traffic to them. Static key "app"; the target
+      # group ARN is known only after apply, which is fine for a value.
+      load_balancer = {
         app = {
           target_group_arn = var.target_group_arn
           container_name   = var.container_name
@@ -86,24 +86,19 @@ module "ecs" {
         }
       } : {}
 
-      # Allow inbound on the container port. When an ALB security group is
-      # provided, only the ALB may reach the tasks; otherwise fall back to a
-      # raw CIDR (useful for a quick no-ALB setup).
-      security_group_ingress_rules = var.alb_security_group_id != null ? {
-        from_alb = {
+      # Allow inbound on the container port only from the ALB.
+      #
+      # The map key ("app") is a static literal so Terraform can build the
+      # for_each set at plan time. The ALB security group id is only known
+      # after apply, but that's fine: unknown *values* are allowed, only
+      # unknown *keys* are not.
+      security_group_ingress_rules = {
+        app = {
           description                  = "Container port from ALB"
           from_port                    = var.container_port
           to_port                      = var.container_port
           ip_protocol                  = "tcp"
           referenced_security_group_id = var.alb_security_group_id
-        }
-        } : {
-        app = {
-          description = "Container port"
-          from_port   = var.container_port
-          to_port     = var.container_port
-          ip_protocol = "tcp"
-          cidr_ipv4   = var.ingress_cidr
         }
       }
 

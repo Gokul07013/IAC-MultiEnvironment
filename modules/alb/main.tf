@@ -6,12 +6,16 @@ module "alb" {
   vpc_id  = var.vpc_id
   subnets = var.subnets
 
-  # Internet-facing by default; set internal = true for private ALBs.
+  # Internet-facing by deyesfault; set internal = true for private ALBs.
   internal = var.internal
+
+  # Allow terraform destroy to delete the ALB. The module defaults this to
+  # true; set false for dev/demo so the stack can be torn down cleanly.
+  enable_deletion_protection = false
 
   # Security group for the ALB: allow inbound HTTP from the world,
   # allow all outbound so it can reach the ECS tasks.
-  security_group_ingress_rules = {
+  security_group_ingress_rules = {  
     http = {
       from_port   = var.listener_port
       to_port     = var.listener_port
