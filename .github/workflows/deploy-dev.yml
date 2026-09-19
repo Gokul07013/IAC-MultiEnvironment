@@ -111,7 +111,7 @@ jobs:
     environment: dev   # ← pauses here and waits for manual approval
     defaults:
       run:
-        working-directory: envs/dev
+        working-directory: environments/dev
 
     steps:
       - uses: actions/checkout@v5
@@ -135,7 +135,7 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: tfplan
-          path: envs/dev
+          path: environments/dev
 
       - name: Terraform Apply
         run: |
@@ -147,7 +147,7 @@ jobs:
       - name: Release state lock on failure
         if: failure() || cancelled()
         run: |
-          aws s3 rm s3://${{ vars.TF_STATE_BUCKET }}/envs/dev/terraform.tfstate.tflock || true
+          aws s3 rm s3://${{ vars.TF_STATE_BUCKET }}/environments/dev/terraform.tfstate.tflock || true
 
   # ── Destroy ───────────────────────────────────────────────────────────────
   destroy:
@@ -160,7 +160,7 @@ jobs:
     environment: dev   # ← approval gate for destroy too
     defaults:
       run:
-        working-directory: envs/dev
+        working-directory: environments/dev
 
     steps:
       - uses: actions/checkout@v5
@@ -183,13 +183,10 @@ jobs:
       - name: Terraform Destroy
         run: |
           terraform destroy \
-            -var="db_password=${{ secrets.DEV_DB_PASSWORD }}" \
-            -var="jwt_secret=${{ secrets.DEV_JWT_SECRET }}" \
-            -var="github_org=${{ vars.GH_ORG }}" \
             -auto-approve \
             -no-color
 
       - name: Release state lock on failure
         if: failure() || cancelled()
         run: |
-          aws s3 rm s3://${{ vars.TF_STATE_BUCKET }}/envs/dev/terraform.tfstate.tflock || true
+          aws s3 rm s3://${{ vars.TF_STATE_BUCKET }}/environments/dev/terraform.tfstate.tflock || true
