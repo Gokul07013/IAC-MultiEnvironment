@@ -97,7 +97,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: tfplan
-          path: envs/dev/tfplan
+          path: environments/dev/tfplan
           retention-days: 1
 
   # ── Apply ─────────────────────────────────────────────────────────────────
