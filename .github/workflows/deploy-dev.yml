@@ -122,18 +122,11 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      - name: Download plan file
-        uses: actions/download-artifact@v7
-        with:
-          name: tfplan
-          path: environments/dev
-
       - name: Terraform Apply
         run: |
           terraform apply \
             -auto-approve \
             -no-color \
-            tfplan
 
       - name: Release state lock on failure
         if: failure() || cancelled()
