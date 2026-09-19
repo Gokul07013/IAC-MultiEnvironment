@@ -1,63 +1,63 @@
 module "vpc" {
   source = "../../modules/vpc"
 
-  name            = "mt"
-  environment     = "dev"
-  cidr            = "20.0.0.0/16"
-  azs             = ["us-east-1a", "us-east-1b", "us-east-1c"]
-  public_subnets  = ["20.0.1.0/24", "20.0.2.0/24", "20.0.3.0/24"]
-  private_subnets = ["20.0.101.0/24", "20.0.102.0/24", "20.0.103.0/24"]
+  name            = var.name
+  environment     = var.environment
+  cidr            = var.cidr
+  azs             = var.azs
+  public_subnets  = var.public_subnets
+  private_subnets = var.private_subnets
 
-  enable_nat_gateway = true
-  single_nat_gateway = true
+  enable_nat_gateway = var.enable_nat_gateway
+  single_nat_gateway = var.single_nat_gateway
 
-  tags = local.tags
+  tags = var.tags
 }
 
 module "alb" {
   source = "../../modules/alb"
 
-  name        = "mt"
-  environment = "dev"
+  name        = var.name
+  environment = var.environment
 
   vpc_id  = module.vpc.vpc_id
   subnets = module.vpc.public_subnets
 
-  listener_port     = 80
-  target_port       = 80
-  health_check_path = "/"
+  listener_port     = var.listener_port
+  target_port       = var.target_port
+  health_check_path = var.health_check_path
 
-  tags = local.tags
+  tags = var.tags
 }
 
 module "ecs" {
   source = "../../modules/ecs"
-  
-  name        = "mt"
-  environment = "dev"
 
-  service_name    = "demo"
-  container_name  = "app"
-  container_image = "nginx:latest"
-  container_port  = 80
-  cpu             = 256
-  memory          = 512
+  name        = var.name
+  environment = var.environment
+
+  service_name    = var.service_name
+  container_name  = var.container_name
+  container_image = var.container_image
+  container_port  = var.container_port
+  cpu             = var.cpu
+  memory          = var.memory
 
   # Tasks run in private subnets, only reachable through the ALB.
   subnet_ids       = module.vpc.private_subnets
-  assign_public_ip = false
+  assign_public_ip = var.assign_public_ip
 
   # Wire the service behind the ALB.
   target_group_arn      = module.alb.target_group_arn
   alb_security_group_id = module.alb.security_group_id
-  health_check_path     = "/"
+  health_check_path     = var.health_check_path
 
-  # Autoscaling: scale tasks between 1 and 4 targeting 70% average CPU.
-  desired_count            = 1
-  enable_autoscaling       = true
-  autoscaling_min_capacity = 1
-  autoscaling_max_capacity = 4
-  autoscaling_cpu_target   = 70
+  # Autoscaling.
+  desired_count            = var.desired_count
+  enable_autoscaling       = var.enable_autoscaling
+  autoscaling_min_capacity = var.autoscaling_min_capacity
+  autoscaling_max_capacity = var.autoscaling_max_capacity
+  autoscaling_cpu_target   = var.autoscaling_cpu_target
 
-  tags = local.tags
+  tags = var.tags
 }
