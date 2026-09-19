@@ -1,4 +1,4 @@
-# ---- Naming / region ----
+# ---- Naming / region -----
 variable "name" {
   type        = string
   description = "Base name / project prefix used in resource names."
