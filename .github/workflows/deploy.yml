@@ -1,0 +1,115 @@
+name: Terraform Promotion Pipeline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'environments/**'
+      - 'modules/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'environments/**'
+      - 'modules/**'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Which environment(s) to run'
+        required: true
+        default: 'all'
+        type: choice
+        options: [dev, qa, prod, all]
+      apply:
+        description: 'Apply after plan? (unchecked = plan only)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: '1.15.6'
+  AWS_REGION: us-east-1
+
+jobs:
+  # ── DEV ─────────────────────────────────────────────────────────────────
+  dev:
+    name: dev
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.target == 'dev' ||
+      github.event.inputs.target == 'all'
+    uses: ./.github/workflows/terraform-reusable.yml
+    with:
+      environment: dev
+      working_directory: environments/dev
+      var_file: dev.tfvars
+      state_key: iac-multienv/dev/terraform.tfstate
+      terraform_version: '1.15.6'
+      aws_region: us-east-1
+      # Apply on push to main, or when dispatch requests apply.
+      # PRs get plan-only (apply=false).
+      apply: >-
+        ${{ (github.event_name == 'push') ||
+            (github.event_name == 'workflow_dispatch' && github.event.inputs.apply == 'true') }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  # ── QA ──────────────────────────────────────────────────────────────────
+  qa:
+    name: qa
+    # Promote to qa after dev. `!failure() && !cancelled()` lets qa run when dev
+    # was *skipped* (single-env dispatch) while still stopping if dev *failed*.
+    needs: dev
+    if: >-
+      !failure() && !cancelled() &&
+      (
+        (github.event_name == 'push') ||
+        (github.event_name == 'workflow_dispatch' &&
+          (github.event.inputs.target == 'qa' || github.event.inputs.target == 'all'))
+      )
+    uses: ./.github/workflows/terraform-reusable.yml
+    with:
+      environment: qa
+      working_directory: environments/qa
+      var_file: qa.tfvars
+      state_key: iac-multienv/qa/terraform.tfstate
+      terraform_version: '1.15.6'
+      aws_region: us-east-1
+      apply: >-
+        ${{ (github.event_name == 'push') ||
+            (github.event_name == 'workflow_dispatch' && github.event.inputs.apply == 'true') }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  # ── PROD ────────────────────────────────────────────────────────────────
+  prod:
+    name: prod
+    # Promote to prod after qa. `!failure() && !cancelled()` lets prod run when qa
+    # was *skipped* (single-env dispatch) while still stopping if qa *failed*.
+    needs: qa
+    if: >-
+      !failure() && !cancelled() &&
+      (
+        (github.event_name == 'push') ||
+        (github.event_name == 'workflow_dispatch' &&
+          (github.event.inputs.target == 'prod' || github.event.inputs.target == 'all'))
+      )
+    uses: ./.github/workflows/terraform-reusable.yml
+    with:
+      environment: prod
+      working_directory: environments/prod
+      var_file: prod.tfvars
+      state_key: iac-multienv/prod/terraform.tfstate
+      terraform_version: '1.15.6'
+      aws_region: us-east-1
+      apply: >-
+        ${{ (github.event_name == 'push') ||
+            (github.event_name == 'workflow_dispatch' && github.event.inputs.apply == 'true') }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
