@@ -15,7 +15,7 @@ module "alb" {
 
   # Security group for the ALB: allow inbound HTTP from the world,
   # allow all outbound so it can reach the ECS tasks.
-  security_group_ingress_rules = {  
+  security_group_ingress_rules = {
     http = {
       from_port   = var.listener_port
       to_port     = var.listener_port

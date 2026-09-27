@@ -43,7 +43,7 @@ module "ecs" {
             }
           ]
 
-          readonlyRootFilesystem  = false
+          readonlyRootFilesystem    = false
           enable_cloudwatch_logging = true
 
           # Container-level health check: ECS runs this command inside the

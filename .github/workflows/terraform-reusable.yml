@@ -1,0 +1,158 @@
+name: Terraform (reusable)
+
+# Reusable workflow: runs plan then (optionally) apply for a single environment.
+# It is called once per environment by the promotion pipeline (deploy.yml).
+#
+# Promotion safety model:
+#   - `plan` produces a saved plan file (tfplan) and uploads it as an artifact.
+#   - `apply` downloads that exact plan and runs `terraform apply tfplan`, so we
+#     apply precisely what was reviewed — no fresh re-plan that could drift.
+#   - The apply job targets a GitHub Environment (`environment:` below), which is
+#     where per-env required-reviewer approval gates live.
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment name (dev|qa|prod). Also the GitHub Environment used for approval + scoped secrets.'
+        required: true
+        type: string
+      working_directory:
+        description: 'Path to the environment root module, e.g. environments/dev.'
+        required: true
+        type: string
+      var_file:
+        description: 'tfvars file name relative to working_directory, e.g. dev.tfvars.'
+        required: true
+        type: string
+      apply:
+        description: 'Whether to run apply after a successful plan.'
+        required: false
+        default: false
+        type: boolean
+      terraform_version:
+        description: 'Terraform version.'
+        required: false
+        default: '1.15.6'
+        type: string
+      aws_region:
+        description: 'AWS region.'
+        required: false
+        default: 'us-east-1'
+        type: string
+      state_key:
+        description: 'Backend state key for this env (used only to release a stale lock on failure).'
+        required: false
+        default: ''
+        type: string
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+# Serialize runs per environment to avoid state lock conflicts.
+concurrency:
+  group: terraform-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Terraform ${{ inputs.terraform_version }}
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate -no-color
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var-file="${{ inputs.var_file }}" \
+            -out=tfplan \
+            -no-color
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment }}
+          path: ${{ inputs.working_directory }}/tfplan
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Release state lock on failure
+        if: failure() || cancelled()
+        run: |
+          if [ -n "${{ inputs.state_key }}" ]; then
+            aws s3 rm "s3://${{ vars.TF_STATE_BUCKET }}/${{ inputs.state_key }}.tflock" || true
+          fi
+
+  apply:
+    name: Apply (${{ inputs.environment }})
+    if: ${{ inputs.apply }}
+    needs: plan
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}   # ← approval gate lives here
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Terraform ${{ inputs.terraform_version }}
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment }}
+          path: ${{ inputs.working_directory }}
+
+      - name: Terraform Apply (saved plan)
+        run: terraform apply -no-color -auto-approve tfplan
+
+      - name: Release state lock on failure
+        if: failure() || cancelled()
+        run: |
+          if [ -n "${{ inputs.state_key }}" ]; then
+            aws s3 rm "s3://${{ vars.TF_STATE_BUCKET }}/${{ inputs.state_key }}.tflock" || true
+          fi
